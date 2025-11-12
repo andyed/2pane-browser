@@ -1,32 +1,35 @@
+
 let isSplit = false;
 let originalBodyStyle = {};
 let container;
-let leftFrame, rightFrame;
-let leftFrameWindow, rightFrameWindow;
+let frames = [];
+let frameWindows = [];
 
 // Listen for messages from the background script to toggle the view
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "toggleSplit") {
     if (isSplit) {
       removeSplitView();
+      sendResponse({ isSplit: false });
     } else {
-      createSplitView();
+      createSplitView(request.paneCount || 2);
+      sendResponse({ isSplit: true });
     }
-    sendResponse({ isSplit: isSplit });
   }
+  // Return true to indicate an asynchronous response
+  return true;
 });
 
 // Listen for navigation messages from the iframes
 window.addEventListener('message', (event) => {
   if (event.data && event.data.type === '2pane-navigate') {
-    if (leftFrame && rightFrame) {
-      leftFrame.src = event.data.url;
-      rightFrame.src = event.data.url;
-    }
+    frames.forEach(frame => {
+      frame.src = event.data.url;
+    });
   }
 });
 
-function createSplitView() {
+function createSplitView(paneCount) {
   if (isSplit) return;
 
   // Save original body style
@@ -38,7 +41,7 @@ function createSplitView() {
   document.body.style.height = '100vh';
 
   container = document.createElement('div');
-  container.id = 'two-pane-container';
+  container.id = 'multi-pane-container';
   Object.assign(container.style, {
     display: 'flex',
     position: 'fixed',
@@ -49,58 +52,53 @@ function createSplitView() {
     zIndex: '999999999'
   });
 
-  leftFrame = document.createElement('iframe');
-  rightFrame = document.createElement('iframe');
-
   const frameStyle = {
-    flex: '1 1 50%',
-    width: '50%',
+    flex: '1 1 ' + (100 / paneCount) + '%',
+    width: (100 / paneCount) + '%',
     height: '100%',
     border: '1px solid #ccc'
   };
 
-  Object.assign(leftFrame.style, frameStyle);
-  Object.assign(rightFrame.style, frameStyle);
-
-  leftFrame.src = window.location.href;
-  rightFrame.src = window.location.href;
-
-  container.appendChild(leftFrame);
-  container.appendChild(rightFrame);
-
-  document.body.appendChild(container);
-
-  let leftLoaded = false;
-  let rightLoaded = false;
-
-  const injectScript = (frame) => {
-    const script = frame.contentDocument.createElement('script');
-    script.src = chrome.runtime.getURL('iframe_script.js');
-    frame.contentDocument.body.appendChild(script);
-  };
-
+  let loadedCount = 0;
   const onFrameLoad = () => {
-    if (leftLoaded && rightLoaded) {
-      leftFrameWindow = leftFrame.contentWindow;
-      rightFrameWindow = rightFrame.contentWindow;
-      setupScrollSync();
+    loadedCount++;
+    if (loadedCount === paneCount) {
+      frameWindows = frames.map(f => f.contentWindow);
+      setupScrollSync(paneCount);
     }
   };
 
-  leftFrame.onload = () => {
-    leftLoaded = true;
-    injectScript(leftFrame);
-    onFrameLoad();
+  const injectScript = (frame) => {
+    try {
+      const script = frame.contentDocument.createElement('script');
+      script.src = chrome.runtime.getURL('iframe_script.js');
+      frame.contentDocument.body.appendChild(script);
+    } catch (e) {
+      // This can fail if the iframe navigates to a cross-origin page before injection
+      console.error("2Pane: Failed to inject script into frame.", e);
+    }
   };
 
-  rightFrame.onload = () => {
-    rightLoaded = true;
-    // Set initial scroll for the right frame once it's loaded
-    rightFrame.contentWindow.scrollTo(0, leftFrame.clientHeight);
-    injectScript(rightFrame);
-    onFrameLoad();
-  };
+  for (let i = 0; i < paneCount; i++) {
+    const frame = document.createElement('iframe');
+    Object.assign(frame.style, frameStyle);
+    frame.src = window.location.href;
+    
+    frame.onload = () => {
+      // Set initial scroll for subsequent frames
+      if (i > 0) {
+        const paneHeight = frames[0].clientHeight;
+        frame.contentWindow.scrollTo(0, i * paneHeight);
+      }
+      injectScript(frame);
+      onFrameLoad();
+    };
 
+    frames.push(frame);
+    container.appendChild(frame);
+  }
+
+  document.body.appendChild(container);
   isSplit = true;
 }
 
@@ -115,36 +113,41 @@ function removeSplitView() {
   document.body.style.overflow = originalBodyStyle.overflow;
   document.body.style.height = originalBodyStyle.height;
 
+  // Clear arrays
+  frames = [];
+  frameWindows = [];
+
   isSplit = false;
 }
 
 let isSyncing = false;
 
-function setupScrollSync() {
-    const onLeftScroll = () => {
-        if (isSyncing) return;
-        isSyncing = true;
-        requestAnimationFrame(() => {
-            rightFrameWindow.scrollTo(0, leftFrameWindow.scrollY + leftFrame.clientHeight);
-            isSyncing = false;
+function setupScrollSync(paneCount) {
+  const paneHeight = frames[0].clientHeight;
+
+  frameWindows.forEach((frameWindow, i) => {
+    frameWindow.addEventListener('scroll', () => {
+      if (isSyncing) return;
+      isSyncing = true;
+      
+      const masterScrollTop = frameWindow.scrollY - (i * paneHeight);
+
+      requestAnimationFrame(() => {
+        frameWindows.forEach((otherFrameWindow, j) => {
+          if (i === j) return; // Don't rescroll the source frame
+
+          const targetScrollTop = masterScrollTop + (j * paneHeight);
+          
+          // Prevent scrolling above the intended start point
+          const minScrollTop = j * paneHeight;
+          if (targetScrollTop < minScrollTop) {
+            otherFrameWindow.scrollTo(0, minScrollTop);
+          } else {
+            otherFrameWindow.scrollTo(0, targetScrollTop);
+          }
         });
-    };
-
-    const onRightScroll = () => {
-        if (isSyncing) return;
-        isSyncing = true;
-        requestAnimationFrame(() => {
-            if (rightFrameWindow.scrollY < leftFrame.clientHeight) {
-                rightFrameWindow.scrollTo(0, leftFrame.clientHeight);
-            }
-            leftFrameWindow.scrollTo(0, rightFrameWindow.scrollY - leftFrame.clientHeight);
-            isSyncing = false;
-        });
-    };
-
-    leftFrameWindow.addEventListener('scroll', onLeftScroll);
-    rightFrameWindow.addEventListener('scroll', onRightScroll);
-
-    // We need to remove these listeners when the view is removed, but the windows will be destroyed.
-    // So, we don't need to explicitly remove them.
+        isSyncing = false;
+      });
+    });
+  });
 }
