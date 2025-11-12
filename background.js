@@ -20,8 +20,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   const isEnabled = tabStorage[tabId];
 
   if (isEnabled) {
-    chrome.tabs.sendMessage(tabId, { action: "toggleSplit" });
-    // The content script will message back the final state.
+    sendMessageWithRetry(tabId, { action: "toggleSplit" });
   } else {
     triggerSplitView(tabId, paneCount);
   }
@@ -77,9 +76,8 @@ async function triggerSplitView(tabId, paneCount) {
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ["content.js"],
-      // world: 'MAIN' // REMOVED: Default to ISOLATED world.
     });
-    chrome.tabs.sendMessage(tabId, { action: "toggleSplit", paneCount: paneCount });
+    sendMessageWithRetry(tabId, { action: "toggleSplit", paneCount: paneCount });
   } catch (err) {
     // If injection fails, unlock the state.
     await chrome.storage.session.set({ [tabId]: false });
@@ -87,4 +85,17 @@ async function triggerSplitView(tabId, paneCount) {
         console.error(`Failed to inject script into tab ${tabId}: `, err);
     }
   }
+}
+
+function sendMessageWithRetry(tabId, message, retries = 3) {
+  chrome.tabs.sendMessage(tabId, message, function(response) {
+    if (chrome.runtime.lastError && retries > 0) {
+      console.warn(`2Pane: Message failed, retrying... (${retries} left)`);
+      setTimeout(() => {
+        sendMessageWithRetry(tabId, message, retries - 1);
+      }, 100);
+    } else if (chrome.runtime.lastError) {
+      console.error(`2Pane: Message failed after multiple retries:`, chrome.runtime.lastError.message);
+    }
+  });
 }
