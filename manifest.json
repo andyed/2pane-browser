@@ -24,5 +24,11 @@
         "path": "rules.json"
       }
     ]
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["iframe_script.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

@@ -16,6 +16,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+// Listen for navigation messages from the iframes
+window.addEventListener('message', (event) => {
+  if (event.data && event.data.type === '2pane-navigate') {
+    if (leftFrame && rightFrame) {
+      leftFrame.src = event.data.url;
+      rightFrame.src = event.data.url;
+    }
+  }
+});
+
 function createSplitView() {
   if (isSplit) return;
 
@@ -63,6 +73,12 @@ function createSplitView() {
   let leftLoaded = false;
   let rightLoaded = false;
 
+  const injectScript = (frame) => {
+    const script = frame.contentDocument.createElement('script');
+    script.src = chrome.runtime.getURL('iframe_script.js');
+    frame.contentDocument.body.appendChild(script);
+  };
+
   const onFrameLoad = () => {
     if (leftLoaded && rightLoaded) {
       leftFrameWindow = leftFrame.contentWindow;
@@ -73,6 +89,7 @@ function createSplitView() {
 
   leftFrame.onload = () => {
     leftLoaded = true;
+    injectScript(leftFrame);
     onFrameLoad();
   };
 
@@ -80,6 +97,7 @@ function createSplitView() {
     rightLoaded = true;
     // Set initial scroll for the right frame once it's loaded
     rightFrame.contentWindow.scrollTo(0, leftFrame.clientHeight);
+    injectScript(rightFrame);
     onFrameLoad();
   };
 
