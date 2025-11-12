@@ -30,59 +30,33 @@ if (window.hasRun2Pane) {
     if (event.source && event.data && event.data.type === '2pane-navigate') {
       console.log('2Pane: Navigation message received for URL:', event.data.url);
       
-      // Check if the new URL should be multipane
-      const settings = await chrome.storage.sync.get(['urlMemory', 'autoSplitRules']);
-      const urlMemory = settings.urlMemory || {};
-      const autoSplitRules = settings.autoSplitRules || [];
-      
       const targetUrl = event.data.url;
-      let shouldBeMultipane = false;
       
-      // Check if URL is in memory
-      if (urlMemory[targetUrl]) {
-        shouldBeMultipane = true;
-      } else {
-        // Check if URL matches any auto-split rules
-        const matchedRule = autoSplitRules.find(rule => targetUrl.includes(rule));
-        if (matchedRule) {
-          shouldBeMultipane = true;
-        }
-      }
+      // Always reset panes on navigation
+      console.log('2Pane: Resetting to single pane for navigation');
       
-      if (shouldBeMultipane && frames && frames.length > 0) {
-        // Keep multipane and navigate all frames
-        console.log('2Pane: Target URL is configured for multipane, navigating frames');
-        frames.forEach((frame, i) => {
-          console.log(`2Pane: Setting frame ${i} src to: ${targetUrl}`);
-          frame.src = targetUrl;
+      // Clean up state BEFORE navigating to prevent message errors
+      if (isSplit) {
+        // Send state update immediately
+        chrome.runtime.sendMessage({ type: 'splitState', isSplit: false });
+        
+        // Clean up the UI
+        if (container) container.remove();
+        document.body.style.overflow = originalBodyStyle.overflow;
+        document.body.style.height = originalBodyStyle.height;
+        frames = [];
+        frameWindows = [];
+        isSplit = false;
+        
+        // Remove from URL memory
+        chrome.storage.sync.get('urlMemory', ({ urlMemory = {} }) => {
+          delete urlMemory[window.location.href];
+          chrome.storage.sync.set({ urlMemory });
         });
-      } else {
-        // Fall back to single pane
-        console.log('2Pane: Target URL not configured for multipane, falling back to single pane');
-        
-        // Clean up state BEFORE navigating to prevent message errors
-        if (isSplit) {
-          // Send state update immediately
-          chrome.runtime.sendMessage({ type: 'splitState', isSplit: false });
-          
-          // Clean up the UI
-          if (container) container.remove();
-          document.body.style.overflow = originalBodyStyle.overflow;
-          document.body.style.height = originalBodyStyle.height;
-          frames = [];
-          frameWindows = [];
-          isSplit = false;
-          
-          // Remove from URL memory
-          chrome.storage.sync.get('urlMemory', ({ urlMemory = {} }) => {
-            delete urlMemory[window.location.href];
-            chrome.storage.sync.set({ urlMemory });
-          });
-        }
-        
-        // Navigate the main page
-        window.location.href = targetUrl;
       }
+      
+      // Navigate the main page - auto-split will trigger if URL is configured
+      window.location.href = targetUrl;
     }
   });
 
