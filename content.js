@@ -1,26 +1,20 @@
-if (window.hasRun2Pane) {
-  // The script has already been injected and is active.
-  // The existing script will handle any new messages.
-} else {
-  window.hasRun2Pane = true;
+let isSplit = false;
+let originalBodyStyle = {};
+let container;
+let frames = [];
+let frameWindows = [];
 
-  let isSplit = false;
-  let originalBodyStyle = {};
-  let container;
-  let frames = [];
-  let frameWindows = [];
-
-  // Listen for messages from the background script to toggle the view
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "toggleSplit") {
-      if (isSplit) {
-        removeSplitView();
-      } else {
-        // Handle view creation asynchronously to check settings first
-        handleCreateSplitView(request.paneCount || 2);
-      }
+// Listen for messages from the background script to toggle the view
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "toggleSplit") {
+    if (isSplit) {
+      removeSplitView();
+    } else {
+      // Handle view creation asynchronously to check settings first
+      handleCreateSplitView(request.paneCount || 2);
     }
-  });
+  }
+});
 
   // Listen for navigation messages from the iframes
   window.addEventListener('message', (event) => {
@@ -172,9 +166,3 @@ if (window.hasRun2Pane) {
               otherFrameWindow.scrollTo(0, targetScrollTop);
             }
           });
-          isSyncing = false;
-        });
-      });
-    });
-  }
-}
