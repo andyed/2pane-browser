@@ -36,11 +36,6 @@ chrome.runtime.onMessage.addListener((request, sender) => {
 
 // Make the listener async to handle await for storage.
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // On a new page load, reset the state for that tab.
-  if (changeInfo.status === 'loading') {
-    await chrome.storage.session.remove(tabId.toString());
-  }
-
   if (changeInfo.status !== 'complete' || !tab.url || !tab.url.startsWith('http')) {
     return;
   }
