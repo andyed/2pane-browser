@@ -1,4 +1,3 @@
-
 let isSplit = false;
 let originalBodyStyle = {};
 let container;
@@ -10,33 +9,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "toggleSplit") {
     if (isSplit) {
       removeSplitView();
-      sendResponse({ isSplit: false });
     } else {
-      createSplitView(request.paneCount || 2);
-      sendResponse({ isSplit: true });
+      // Handle view creation asynchronously to check settings first
+      handleCreateSplitView(request.paneCount || 2);
     }
   }
-  // Return true to indicate an asynchronous response
+  // Return true to indicate an asynchronous response is needed
   return true;
 });
 
 // Listen for navigation messages from the iframes
 window.addEventListener('message', (event) => {
-  if (event.data && event.data.type === '2pane-navigate') {
-    frames.forEach(frame => {
-      frame.src = event.data.url;
-    });
+  // Check for our specific message format
+  if (event.source && event.data && event.data.type === '2pane-navigate') {
+    console.log('2Pane: Navigation message received for URL:', event.data.url);
+    if (frames && frames.length > 0) {
+      frames.forEach((frame, i) => {
+        console.log(`2Pane: Setting frame ${i} src to: ${event.data.url}`);
+        frame.src = event.data.url;
+      });
+    }
   }
 });
+
+async function handleCreateSplitView(paneCount) {
+  const settings = await chrome.storage.sync.get({
+    minWidthEnabled: false,
+    minWidthValue: 1200
+  });
+
+  if (settings.minWidthEnabled && window.screen.width < settings.minWidthValue) {
+    console.log(`2Pane: Screen width ${window.screen.width}px is less than minimum ${settings.minWidthValue}px. Aborting split view.`);
+    // Silently abort. The user doesn't need a notification for this.
+    return;
+  }
+  createSplitView(paneCount);
+}
 
 function createSplitView(paneCount) {
   if (isSplit) return;
 
-  // Save original body style
+  // --- Save state to storage ---
+  chrome.storage.sync.get('urlMemory', ({ urlMemory = {} }) => {
+    urlMemory[window.location.href] = paneCount;
+    chrome.storage.sync.set({ urlMemory });
+  });
+
   originalBodyStyle.overflow = document.body.style.overflow;
   originalBodyStyle.height = document.body.style.height;
   
-  // Hide original body content and prevent scrolling
   document.body.style.overflow = 'hidden';
   document.body.style.height = '100vh';
 
@@ -74,7 +95,6 @@ function createSplitView(paneCount) {
       script.src = chrome.runtime.getURL('iframe_script.js');
       frame.contentDocument.body.appendChild(script);
     } catch (e) {
-      // This can fail if the iframe navigates to a cross-origin page before injection
       console.error("2Pane: Failed to inject script into frame.", e);
     }
   };
@@ -85,7 +105,6 @@ function createSplitView(paneCount) {
     frame.src = window.location.href;
     
     frame.onload = () => {
-      // Set initial scroll for subsequent frames
       if (i > 0) {
         const paneHeight = frames[0].clientHeight;
         frame.contentWindow.scrollTo(0, i * paneHeight);
@@ -100,24 +119,27 @@ function createSplitView(paneCount) {
 
   document.body.appendChild(container);
   isSplit = true;
+  chrome.runtime.sendMessage({ type: 'splitState', isSplit: true });
 }
 
 function removeSplitView() {
   if (!isSplit) return;
 
-  if (container) {
-    container.remove();
-  }
+  chrome.storage.sync.get('urlMemory', ({ urlMemory = {} }) => {
+    delete urlMemory[window.location.href];
+    chrome.storage.sync.set({ urlMemory });
+  });
 
-  // Restore original body style
+  if (container) container.remove();
+
   document.body.style.overflow = originalBodyStyle.overflow;
   document.body.style.height = originalBodyStyle.height;
 
-  // Clear arrays
   frames = [];
   frameWindows = [];
 
   isSplit = false;
+  chrome.runtime.sendMessage({ type: 'splitState', isSplit: false });
 }
 
 let isSyncing = false;
@@ -134,11 +156,10 @@ function setupScrollSync(paneCount) {
 
       requestAnimationFrame(() => {
         frameWindows.forEach((otherFrameWindow, j) => {
-          if (i === j) return; // Don't rescroll the source frame
+          if (i === j) return;
 
           const targetScrollTop = masterScrollTop + (j * paneHeight);
           
-          // Prevent scrolling above the intended start point
           const minScrollTop = j * paneHeight;
           if (targetScrollTop < minScrollTop) {
             otherFrameWindow.scrollTo(0, minScrollTop);

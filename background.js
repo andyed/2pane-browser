@@ -20,24 +20,58 @@ chrome.action.onClicked.addListener((tab) => {
 
   if (isEnabled) {
     // If it's enabled, send a message to the content script to disable it
-    chrome.tabs.sendMessage(tabId, { action: "toggleSplit" }, (response) => {
-      if (chrome.runtime.lastError) {
-        tabState.set(tabId, false);
-      } else if (response && !response.isSplit) {
-        tabState.set(tabId, false);
-      }
-    });
+    chrome.tabs.sendMessage(tabId, { action: "toggleSplit" });
   } else {
     // If it's disabled, inject the content script and then send a message to enable it
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ["content.js"]
-    }).then(() => {
-      chrome.tabs.sendMessage(tabId, { action: "toggleSplit", paneCount: paneCount }, (response) => {
-        if (response && response.isSplit) {
-          tabState.set(tabId, true);
-        }
-      });
-    }).catch(err => console.error("Failed to inject script: ", err));
+    triggerSplitView(tabId, paneCount);
   }
 });
+
+// Listen for messages from content script to update our internal state
+chrome.runtime.onMessage.addListener((request, sender) => {
+  if (request.type === 'splitState') {
+    if (sender.tab) {
+      tabState.set(sender.tab.id, request.isSplit);
+    }
+  }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Ensure the page is fully loaded and has a URL
+  if (changeInfo.status !== 'complete' || !tab.url || !tab.url.startsWith('http')) {
+    return;
+  }
+
+  // Don't auto-split if a view is already active in the tab
+  if (tabState.get(tabId)) {
+    return;
+  }
+
+  chrome.storage.sync.get(['urlMemory', 'autoSplitRules'], ({ urlMemory = {}, autoSplitRules = [] }) => {
+    // Check URL memory first
+    if (urlMemory[tab.url]) {
+      triggerSplitView(tabId, urlMemory[tab.url]);
+      return;
+    }
+
+    // Then check auto-split rules
+    const matchedRule = autoSplitRules.find(rule => tab.url.includes(rule));
+    if (matchedRule) {
+      triggerSplitView(tabId, 2); // Default to 2 panes for auto-split rules
+    }
+  });
+});
+
+function triggerSplitView(tabId, paneCount) {
+  chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    files: ["content.js"]
+  }).then(() => {
+    chrome.tabs.sendMessage(tabId, { action: "toggleSplit", paneCount: paneCount });
+  }).catch(err => {
+    // This can happen on special pages like chrome://extensions
+    if (!err.message.includes('Cannot access a chrome:// URL')) {
+        console.error("Failed to inject script: ", err)
+    }
+  });
+}

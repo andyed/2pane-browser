@@ -3,11 +3,12 @@
   "name": "2Pane Split Screen",
   "version": "1.0",
   "description": "Splits the current tab into a two-pane view, simulating a tall monitor.",
-  "permissions": ["activeTab", "scripting", "declarativeNetRequest"],
+  "permissions": ["activeTab", "scripting", "declarativeNetRequest", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_title": "Toggle 2Pane"
   },
+  "options_page": "options.html",
   "background": {
     "service_worker": "background.js"
   },

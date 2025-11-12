@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>2Pane Split Screen Options</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 1em;
+      width: 400px;
+    }
+    h1 {
+      font-size: 1.2em;
+    }
+    textarea {
+      width: 100%;
+      height: 150px;
+      margin-bottom: 1em;
+    }
+    #status {
+      color: green;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Auto-Split Rules</h1>
+  <p>Enter URL fragments that should always open in a 2-pane view, one per line.</p>
+  <textarea id="rules"></textarea>
+  <button id="save">Save</button>
+  <div id="status"></div>
+
+  <hr>
+
+  <h2>Minimum Width Trigger</h2>
+  <input type="checkbox" id="minWidthCheck">
+  <label for="minWidthCheck">Only auto-split on screens wider than:</label>
+  <input type="number" id="minWidthValue" style="width: 60px;"> px
+
+  <script src="options.js"></script>
+</body>
+</html>
