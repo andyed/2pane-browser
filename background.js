@@ -92,7 +92,10 @@ async function triggerSplitView(tabId, paneCount) {
       target: { tabId: tabId },
       files: ["content.js"],
     });
-    sendMessageWithRetry(tabId, { action: "toggleSplit", paneCount: paneCount });
+    // Give the content script a moment to set up its message listener
+    setTimeout(() => {
+      sendMessageWithRetry(tabId, { action: "toggleSplit", paneCount: paneCount });
+    }, 50);
   } catch (err) {
     // If injection fails, unlock the state.
     await chrome.storage.session.set({ [tabId]: false });
