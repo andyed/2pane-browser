@@ -1,4 +1,3 @@
-
 // Use session storage for state. It's async but persists across service worker restarts.
 const clickState = new Map(); // Use a map to handle timeouts for each tab individually.
 const DOUBLE_CLICK_THRESHOLD = 400; // ms
@@ -35,8 +34,6 @@ async function handleSingleClick(tab) {
 async function handleDoubleClick(tab) {
   const tabStorage = await chrome.storage.session.get(tab.id.toString());
   const isEnabled = tabStorage[tab.id];
-  // A double-click should always be intentional, so we can toggle 3-pane view
-  // regardless of the current state. If it's on, it will be turned off.
   if (isEnabled) {
     sendMessageWithRetry(tab.id, { action: "toggleSplit" });
   } else {
