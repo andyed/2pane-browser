@@ -14,8 +14,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       handleCreateSplitView(request.paneCount || 2);
     }
   }
-  // Return true to indicate an asynchronous response is needed
-  return true;
 });
 
 // Listen for navigation messages from the iframes

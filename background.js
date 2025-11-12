@@ -20,7 +20,7 @@ chrome.action.onClicked.addListener((tab) => {
 
   if (isEnabled) {
     // If it's enabled, send a message to the content script to disable it
-    chrome.tabs.sendMessage(tabId, { action: "toggleSplit" });
+    sendMessageWithRetry(tabId, { action: "toggleSplit" });
   } else {
     // If it's disabled, inject the content script and then send a message to enable it
     triggerSplitView(tabId, paneCount);
@@ -63,15 +63,29 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 function triggerSplitView(tabId, paneCount) {
+  // We execute the script, and the script will be responsible for checking settings
+  // and creating the view if necessary.
   chrome.scripting.executeScript({
     target: { tabId: tabId },
     files: ["content.js"]
   }).then(() => {
-    chrome.tabs.sendMessage(tabId, { action: "toggleSplit", paneCount: paneCount });
+    sendMessageWithRetry(tabId, { action: "toggleSplit", paneCount: paneCount });
   }).catch(err => {
-    // This can happen on special pages like chrome://extensions
-    if (!err.message.includes('Cannot access a chrome:// URL')) {
-        console.error("Failed to inject script: ", err)
+    if (!err.message.includes('Cannot access a chrome:// URL') && !err.message.includes('No tab with id')) {
+        console.error(`Failed to inject script into tab ${tabId}: `, err);
+    }
+  });
+}
+
+function sendMessageWithRetry(tabId, message, retries = 3) {
+  chrome.tabs.sendMessage(tabId, message, function(response) {
+    if (chrome.runtime.lastError && retries > 0) {
+      console.warn(`2Pane: Message failed, retrying... (${retries} left)`);
+      setTimeout(() => {
+        sendMessageWithRetry(tabId, message, retries - 1);
+      }, 100);
+    } else if (chrome.runtime.lastError) {
+      console.error(`2Pane: Message failed after multiple retries:`, chrome.runtime.lastError.message);
     }
   });
 }
