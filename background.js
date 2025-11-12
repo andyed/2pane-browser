@@ -1,30 +1,48 @@
+
 // Use session storage for state. It's async but persists across service worker restarts.
-// It's cleared when the browser session ends.
+const clickState = new Map(); // Use a map to handle timeouts for each tab individually.
+const DOUBLE_CLICK_THRESHOLD = 400; // ms
 
-const clickState = new Map(); // For double-click detection, this can be in-memory.
-const DOUBLE_CLICK_THRESHOLD = 500; // ms
-
-// Make the listener async to handle await for storage.
-chrome.action.onClicked.addListener(async (tab) => {
+chrome.action.onClicked.addListener((tab) => {
   const tabId = tab.id;
   if (!tabId) return;
 
-  const now = new Date().getTime();
-  const lastClick = clickState.get(tabId) || 0;
-  clickState.set(tabId, now);
-
-  const isDoubleClick = (now - lastClick) < DOUBLE_CLICK_THRESHOLD;
-  const paneCount = isDoubleClick ? 3 : 2;
-
-  const tabStorage = await chrome.storage.session.get(tabId.toString());
-  const isEnabled = tabStorage[tabId];
-
-  if (isEnabled) {
-    sendMessageWithRetry(tabId, { action: "toggleSplit" });
+  if (clickState.has(tabId)) {
+    // This is a double click
+    clearTimeout(clickState.get(tabId));
+    clickState.delete(tabId);
+    handleDoubleClick(tab);
   } else {
-    triggerSplitView(tabId, paneCount);
+    // This is a single click, wait to see if it becomes a double
+    const timeout = setTimeout(() => {
+      handleSingleClick(tab);
+      clickState.delete(tabId);
+    }, DOUBLE_CLICK_THRESHOLD);
+    clickState.set(tabId, timeout);
   }
 });
+
+async function handleSingleClick(tab) {
+  const tabStorage = await chrome.storage.session.get(tab.id.toString());
+  const isEnabled = tabStorage[tab.id];
+  if (isEnabled) {
+    sendMessageWithRetry(tab.id, { action: "toggleSplit" });
+  } else {
+    triggerSplitView(tab.id, 2);
+  }
+}
+
+async function handleDoubleClick(tab) {
+  const tabStorage = await chrome.storage.session.get(tab.id.toString());
+  const isEnabled = tabStorage[tab.id];
+  // A double-click should always be intentional, so we can toggle 3-pane view
+  // regardless of the current state. If it's on, it will be turned off.
+  if (isEnabled) {
+    sendMessageWithRetry(tab.id, { action: "toggleSplit" });
+  } else {
+    triggerSplitView(tab.id, 3);
+  }
+}
 
 // The content script reports its state, which we store reliably.
 chrome.runtime.onMessage.addListener((request, sender) => {
