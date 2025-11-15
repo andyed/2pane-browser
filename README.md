@@ -43,3 +43,9 @@ To configure the extension's advanced features:
     *   **Auto-Split Rules**: Enter URL fragments (e.g., `/docs`, `example.com/blog`) one per line. If a page's URL contains any of these fragments, it will automatically open in a 2-pane view.
     *   **Minimum Width Trigger**: Enable this option and specify a pixel width. The extension will only auto-split (from URL memory or auto-split rules) if your screen is wider than this value. This prevents unwanted splits on smaller screens.
     *   Click **Save** to apply your changes.
+
+## Why isn't this in the Chrome Web Store?
+
+This extension requires powerful permissions, including the ability to run on all sites and modify certain response headers, in order to reliably provide the multi-pane view and work around framing restrictions. Those capabilities are integral to the core functionality rather than optional extras.
+
+Because of the sensitivity of these permissions and the potential review and policy complexities around them, the current plan is **not** to publish this extension to the Chrome Web Store or any other browser web store. Instead, it is intended to be installed as an unpacked extension by users who are comfortable reviewing the source and granting the necessary permissions.
